@@ -1,11 +1,43 @@
 {
   "name": "@smlee/free-tunnel-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "description": "Free ngrok alternative: WebSocket reverse-tunnel server with HTTP routing and subdomains.",
   "type": "commonjs",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
   "bin": {
     "free-tunnel-server": "dist/cli.js"
+  },
+  "keywords": [
+    "free",
+    "free tunnel",
+    "free ngrok",
+    "free ngrok alternative",
+    "ngrok alternative",
+    "localtunnel alternative",
+    "reverse tunnel server",
+    "reverse proxy",
+    "http tunnel",
+    "websocket",
+    "ws proxy",
+    "subdomain routing",
+    "tunneling",
+    "proxy",
+    "self-hosted",
+    "devops",
+    "ingress"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/smlee/free-tunnel.git"
+  },
+  "homepage": "https://github.com/smlee/free-tunnel#readme",
+  "bugs": {
+    "url": "https://github.com/smlee/free-tunnel/issues"
+  },
+  "author": "Sangmin Lee",
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "clean": "rm -rf dist *.tsbuildinfo",

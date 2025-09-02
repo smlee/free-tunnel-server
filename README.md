@@ -1,6 +1,6 @@
 # @smlee/free-tunnel-server
 
-WebSocket-based reverse-tunnel broker. Accepts client connections and forwards HTTP traffic from `/t/:subdomain/*` to the connected client.
+WebSocket-based reverse-tunnel broker. Accepts client connections and forwards HTTP traffic from `/t/:subdomain/*` to the connected client. Free ngrok alternative and free tunnel server for exposing services with subdomain routing.
 
 - CLI name: `free-tunnel-server`
 - HTTP listens on `--http-port` (default 8080)
