@@ -14,10 +14,14 @@ WebSocket-based reverse-tunnel broker. Accepts client connections and forwards H
 
 ## Quick start (global install)
 
-Install globally and run the server (choose secure token):
+Install globally and run the server. Running with no flags uses sensible defaults.
 
 ```
 npm i -g @smlee/free-tunnel-server
+# simplest: runs with defaults
+free-tunnel-server
+
+# or specify ports/token explicitly
 free-tunnel-server --http-port 8080 --ws-port 8081 --auth-token <STRONG_TOKEN>
 ```
 
@@ -28,29 +32,48 @@ Note: If you omit `--auth-token`, the server will generate a random token at sta
 ```
 Copy that value and use it in your client `--token`.
 
-Place the server behind a reverse-proxy. Example Nginx (single host `tunnel.example.com`):
+### Defaults
+
+- HTTP port: `8080`
+- WebSocket port: `8081`
+- Auth: if `--auth-token` omitted, a secure token is generated and required
+- Allowed subdomains: all allowed (use `--allowed` to restrict)
+- HTTP entrypoint: `/t/:subdomain/*`
+
+Place the server behind a reverse-proxy.
+
+Clean root (no /t/<subdomain>) with Nginx — single host `tunnel.example.com` mapping `/` → `/t/tunnel/*`.
+
+This makes your public base URL exactly `https://tunnel.example.com/` while the server still uses path-based routing internally. No server code changes are required; it's purely an Nginx rewrite/proxy setup:
 
 ```nginx
 server {
-  listen 80;
+  listen 443 ssl http2;
   server_name tunnel.example.com;
 
+  # TLS config ...
+  # ssl_certificate     /etc/letsencrypt/live/tunnel.example.com/fullchain.pem;
+  # ssl_certificate_key /etc/letsencrypt/live/tunnel.example.com/privkey.pem;
+
   # WebSocket control for the client
-  location /ws {
+  location = /ws {
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
     proxy_pass http://127.0.0.1:8081;
+    proxy_read_timeout 75s; # > 30s heartbeat
   }
 
-  # End-user HTTP → /t/tunnel/*
+  # Clean root → path-based tunnel /t/tunnel/*
   location / {
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_pass http://127.0.0.1:8080/t/tunnel/;
+    proxy_read_timeout 60s;
+    proxy_send_timeout 60s;
+    proxy_pass http://127.0.0.1:8080/t/tunnel/; # trailing slash rewrites / → /t/tunnel/
   }
 }
 ```

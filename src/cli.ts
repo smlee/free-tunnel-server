@@ -13,6 +13,7 @@ program
   .option('-t, --auth-token <token>', 'Auth token required for clients', process.env.AUTH_TOKEN)
   .option('-a, --allowed <list>', 'Comma-separated list of allowed subdomains', process.env.ALLOWED_SUBDOMAINS)
   .option('--replace-existing', 'Replace existing client for same subdomain', (process.env.REPLACE_EXISTING || '').toLowerCase() === 'true')
+  .option('--public-host <domain>', 'Public apex domain for guidance (e.g., example.com). The server will show guidance for free-tunnel.<domain>.', process.env.PUBLIC_HOST)
   .action((opts) => {
     const httpPort = parseInt(String(opts.httpPort), 10);
     const wsPort = parseInt(String(opts.wsPort), 10);
@@ -27,6 +28,7 @@ program
       authToken: opts.authToken,
       allowedSubdomains,
       replaceExisting: Boolean(opts.replaceExisting),
+      publicHost: opts.publicHost ? String(opts.publicHost) : undefined,
     });
 
     console.log(`[cli] Server started: HTTP :${httpPort}, WS :${wsPort}`);

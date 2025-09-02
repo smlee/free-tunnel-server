@@ -5,6 +5,7 @@
 */
 import http from 'http';
 import crypto from 'crypto';
+import { promises as dns } from 'dns';
 import express, { Request, Response } from 'express';
 import WebSocket, { WebSocketServer } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
@@ -32,6 +33,7 @@ export interface ServerConfig {
   authToken?: string;
   allowedSubdomains?: string[];
   replaceExisting?: boolean;
+  publicHost?: string;
 }
 
 type ClientEntry = { ws: WebSocket & { isAlive?: boolean }; updatedAt: number };
@@ -60,7 +62,7 @@ function sanitizeHeaders(h: Record<string, any> = {}): Record<string, any> {
 }
 
 export function startServer(cfg: ServerConfig) {
-  const { httpPort, wsPort, authToken, allowedSubdomains = [] } = cfg;
+  const { httpPort, wsPort, authToken, allowedSubdomains = [], publicHost } = cfg;
   const clients = new Map<string, ClientEntry>();
   const isAllowed = (s: string) => allowedSubdomains.length === 0 || allowedSubdomains.includes(s);
   const effectiveToken = authToken ?? crypto.randomBytes(16).toString('hex');
@@ -147,6 +149,25 @@ export function startServer(cfg: ServerConfig) {
       console.log(`[server] Generated auth token: ${effectiveToken}`);
     } else {
       console.log(`[server] Auth token configured`);
+    }
+
+    // Startup guidance
+    if (publicHost) {
+      const apex = publicHost;
+      const exampleSub = 'myapp';
+      const exampleHost = `${exampleSub}.${apex}`;
+      const wsUrl = `wss://${exampleHost}/ws`;
+      console.log(`[server] Guidance (replace "${exampleSub}" with YOUR subdomain and configure DNS A/AAAA/CNAME):`);
+      console.log(`  free-tunnel ${exampleHost} localhost:3000 --token ${effectiveToken}`);
+      console.log(`[server] The client will prefer secure (wss/https) if available, and fall back to ws/http.`);
+      // Best-effort DNS check for guidance
+      dns.lookup(exampleHost).catch(() => {
+        console.warn(`[server] Warning: Could not resolve "${exampleHost}". Ensure DNS exists and your reverse proxy maps:`);
+        console.warn(`  - WebSocket:   /ws              -> ws://<server-host>:${wsPort}`);
+        console.warn(`  - HTTP tunnel: /t/<subdomain>/* -> http://<server-host>:${httpPort}`);
+      });
+    } else {
+      console.log(`[server] Tip: pass --public-host example.com to print copy/paste guidance for your subdomain (e.g., myapp.example.com).`);
     }
   });
 
