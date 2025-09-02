@@ -1,7 +1,6 @@
 {
   "name": "@smlee/free-tunnel-server",
   "version": "0.1.0",
-  "private": true,
   "type": "commonjs",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
@@ -9,10 +8,13 @@
     "free-tunnel-server": "dist/cli.js"
   },
   "scripts": {
+    "clean": "rm -rf dist *.tsbuildinfo",
     "build": "tsc -b",
     "start": "node dist/cli.js",
     "dev": "ts-node-dev --respawn --transpile-only src/cli.ts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run clean && npm run build",
+    "publish:public": "npm publish --access public",
+    "release": "npm run clean && npm run build && npm run publish:public"
   },
   "files": [
     "dist/**/*",

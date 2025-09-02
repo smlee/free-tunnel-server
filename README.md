@@ -8,6 +8,65 @@ WebSocket-based reverse-tunnel broker. Accepts client connections and forwards H
 - Simple token auth via `--auth-token`
 - Optional `--allowed` comma list to restrict subdomains
 
+> This server works hand-in-hand with the client package `@smlee/free-tunnel`.
+> See the client README at `../app/README.md` and the npm package:
+> https://www.npmjs.com/package/@smlee/free-tunnel
+
+## Quick start (global install)
+
+Install globally and run the server (choose secure token):
+
+```
+npm i -g @smlee/free-tunnel-server
+free-tunnel-server --http-port 8080 --ws-port 8081 --auth-token <STRONG_TOKEN>
+```
+
+Note: If you omit `--auth-token`, the server will generate a random token at startup and print it to the console as:
+
+```
+[server] Generated auth token: <token>
+```
+Copy that value and use it in your client `--token`.
+
+Place the server behind a reverse-proxy. Example Nginx (single host `tunnel.example.com`):
+
+```nginx
+server {
+  listen 80;
+  server_name tunnel.example.com;
+
+  # WebSocket control for the client
+  location /ws {
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_pass http://127.0.0.1:8081;
+  }
+
+  # End-user HTTP → /t/tunnel/*
+  location / {
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_pass http://127.0.0.1:8080/t/tunnel/;
+  }
+}
+```
+
+Then, on the client machine expose your local app (example local target http://localhost:3000):
+
+```
+npm i -g @smlee/free-tunnel
+free-tunnel --server-ws-url wss://tunnel.example.com/ws \
+  --subdomain tunnel \
+  --token <STRONG_TOKEN> \
+  --to http://localhost:3000
+```
+
+Visit: `https://tunnel.example.com/`
+
 ## Install & Run (local)
 
 ```
@@ -66,13 +125,159 @@ Default policy: first connection wins; others are rejected. If `--replace-existi
 
 - Clients must pass this token via the `token` query (CLI flag `-t, --token`).
 
-## Deployment (DigitalOcean sketch)
+## Reverse proxy examples
 
-- Build and run behind Nginx or expose ports directly.
-- Example Nginx snippet:
+Below are minimal examples for placing the server behind a reverse proxy. Adjust backend ports to match how you start the server (`--http-port` and `--ws-port`).
+
+### Nginx
+
+Prereqs: `nginx` with `http`, `proxy`, and `stream` modules (default on most distros).
+
+- Single host mapped to one subdomain (e.g., public host `tunnel.example.com` → internal `/t/tunnel/*`).
+
+```nginx
+# HTTP users → /t/tunnel/* on the HTTP backend (replace 8080)
+server {
+  listen 80;
+  server_name tunnel.example.com;
+
+  client_max_body_size 10m;
+
+  # Optional external health endpoints
+  location = /_health { proxy_pass http://127.0.0.1:8080/; }
+  location ^~ /_availability/ { proxy_pass http://127.0.0.1:8080/availability/; }
+
+  # WebSocket control endpoint (client connects here)
+  location /ws {
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_pass http://127.0.0.1:8081;  # WS backend port
+    proxy_read_timeout 75s;             # > 30s heartbeat in server
+  }
+
+  # All other HTTP traffic → tunnel HTTP entry at /t/tunnel/*
+  location / {
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_pass http://127.0.0.1:8080/t/tunnel/;  # note the trailing slash for path rewrite
+    proxy_read_timeout 60s;
+    proxy_send_timeout 60s;
+  }
+}
 ```
-location /t/ { proxy_pass http://127.0.0.1:8080; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; }
-location /ws { proxy_pass http://127.0.0.1:8081; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; }
+
+- Wildcard subdomains (e.g., `app1.example.com`, `app2.example.com`), mapping host → `/t/<host-label>/*`:
+
+```nginx
+map $host $sub {
+  default "";
+  ~^(?<label>[^.]+)\.example\.com$ $label;
+}
+
+server {
+  listen 80;
+  server_name *.example.com;
+
+  # WS endpoint shared for all subdomains
+  location /ws {
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_pass http://127.0.0.1:8081;
+  }
+
+  # HTTP: rewrite to /t/<sub>/*
+  location / {
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_pass http://127.0.0.1:8080/t/$sub/;
+  }
+}
+```
+
+Notes:
+- The server’s WS layer only cares about the `?subdomain=<name>&token=<tok>` query; it doesn’t require a specific path. We use `/ws` in Nginx for clarity.
+- Ensure your client connects to `ws(s)://<host>/ws?subdomain=<name>&token=<tok>` and that `<name>` matches the HTTP rewrite target.
+
+### Apache httpd
+
+Prereqs: enable modules: `proxy`, `proxy_http`, `proxy_wstunnel`, `headers`.
+
+- Single host mapped to one subdomain (`tunnel.example.com` → `/t/tunnel/*`):
+
+```apache
+<VirtualHost *:80>
+  ServerName tunnel.example.com
+
+  # WebSocket control
+  ProxyPass        "/ws"  "ws://127.0.0.1:8081/"
+  ProxyPassReverse "/ws"  "ws://127.0.0.1:8081/"
+
+  # HTTP users → /t/tunnel/*
+  ProxyPass        "/"    "http://127.0.0.1:8080/t/tunnel/"
+  ProxyPassReverse "/"    "http://127.0.0.1:8080/t/tunnel/"
+
+  RequestHeader set X-Forwarded-Proto expr=%{REQUEST_SCHEME}
+  RequestHeader set X-Forwarded-For "%{REMOTE_ADDR}s"
+</VirtualHost>
+```
+
+- Wildcard subdomains (requires `mod_rewrite` to capture the first label):
+
+```apache
+<VirtualHost *:80>
+  ServerName example.com
+  ServerAlias *.example.com
+
+  RewriteEngine On
+  # Extract first host label as SUB
+  RewriteCond %{HTTP_HOST} ^([^.]+)\.example\.com$ [NC]
+  RewriteRule ^/(.*)$ http://127.0.0.1:8080/t/%1/$1 [P,L]
+
+  # WebSocket control shared for all subs
+  ProxyPass        "/ws"  "ws://127.0.0.1:8081/"
+  ProxyPassReverse "/ws"  "ws://127.0.0.1:8081/"
+
+  ProxyPassReverse "/"    "http://127.0.0.1:8080/"
+</VirtualHost>
+```
+
+### Free TLS with Let’s Encrypt (Certbot)
+
+Choose one authenticator (Nginx or Apache). These commands set up HTTPS and automatic renewal.
+
+- Nginx:
+```bash
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d tunnel.example.com            # single host
+sudo certbot --nginx -d example.com -d "*.example.com" --agree-tos --manual-public-ip-logging-ok --register-unsafely-without-email --no-eff-email --dns-<provider> # wildcard with DNS plugin
+```
+
+- Apache:
+```bash
+sudo apt-get install -y certbot python3-certbot-apache
+sudo certbot --apache -d tunnel.example.com
+```
+
+- Webroot (works with either server if you prefer manual control):
+```bash
+sudo apt-get install -y certbot
+sudo certbot certonly --webroot -w /var/www/html -d tunnel.example.com
+# Then reference the issued certs in your server/vhost config
+#   ssl_certificate     /etc/letsencrypt/live/t1.example.com/fullchain.pem;
+#   ssl_certificate_key /etc/letsencrypt/live/t1.example.com/privkey.pem;
+```
+
+Renewal runs via cron/systemd timers installed by Certbot. Test with:
+```bash
+sudo certbot renew --dry-run
 ```
 
 ## License
