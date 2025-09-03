@@ -1,6 +1,6 @@
 {
   "name": "@smlee/free-tunnel-server",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Free ngrok alternative: WebSocket reverse-tunnel server with HTTP routing and subdomains.",
   "type": "commonjs",
   "main": "dist/server.js",
