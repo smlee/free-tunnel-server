@@ -44,19 +44,15 @@ Place the server behind a reverse-proxy.
 
 Clean root (no /t/<subdomain>) with Nginx — single host `tunnel.example.com` mapping `/` → `/t/tunnel/*`.
 
-This makes your public base URL exactly `https://tunnel.example.com/` while the server still uses path-based routing internally. No server code changes are required; it's purely an Nginx rewrite/proxy setup:
+This makes your public base URL exactly `http://tunnel.example.com/` while the server still uses path-based routing internally. No server code changes are required; it's purely an Nginx rewrite/proxy setup:
 
 ```nginx
 server {
-  listen 443 ssl http2;
+  listen 80;
   server_name tunnel.example.com;
 
-  # TLS config ...
-  # ssl_certificate     /etc/letsencrypt/live/tunnel.example.com/fullchain.pem;
-  # ssl_certificate_key /etc/letsencrypt/live/tunnel.example.com/privkey.pem;
-
   # WebSocket control for the client
-  location = /ws {
+  location /ws {
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
