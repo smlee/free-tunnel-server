@@ -45,6 +45,7 @@ function sanitizeHeaders(h: Record<string, any> = {}): Record<string, any> {
     if (
       [
         'connection',
+        'content-length',
         'keep-alive',
         'proxy-authenticate',
         'proxy-authorization',
@@ -69,8 +70,8 @@ export function startServer(cfg: ServerConfig) {
   const tokenWasGenerated = !authToken;
 
   const app = express();
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  // app.use(express.json({ limit: '10mb' }));
+  // app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   app.all('/t/:subdomain/*', (req: Request, res: Response) => {
     const subdomain = req.params.subdomain;
@@ -90,7 +91,7 @@ export function startServer(cfg: ServerConfig) {
         type: 'request',
         method: req.method,
         path: (req.params as any)[0] ? '/' + (req.params as any)[0] : '/',
-        headers: sanitizeHeaders(req.headers as any),
+        headers: req.headers as any,
         bodyBase64: bodyBuf.length ? bodyBuf.toString('base64') : undefined,
       };
 
@@ -117,7 +118,7 @@ export function startServer(cfg: ServerConfig) {
       const timer = setTimeout(() => {
         entry.ws.off('message', onMessage);
         res.status(504).json({ error: 'Upstream timeout' });
-      }, 30000);
+      }, 60000);
 
       entry.ws.on('message', onMessage);
 
